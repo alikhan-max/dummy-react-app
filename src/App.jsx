@@ -1,50 +1,68 @@
 
 import React, { useEffect, useState } from 'react';
 
-const starterTasks = [
-  { id: 1, text: 'Build my React application', done: true },
-  { id: 2, text: 'Push code to GitHub', done: true },
-  { id: 3, text: 'Deploy on Cloudways Velocity', done: false },
-  { id: 4, text: 'Share my live application', done: false },
-];
-
 function App() {
-  const [tasks, setTasks] = useState(() => {
-    try {
-      const saved = JSON.parse(
-        localStorage.getItem('velocity-demo-tasks')
-      );
-
-      return Array.isArray(saved) ? saved : starterTasks;
-    } catch {
-      return starterTasks;
-    }
-  });
-
+  const [tasks, setTasks] = useState([]);
   const [newTask, setNewTask] = useState('');
+
   const [server, setServer] = useState(null);
   const [checking, setChecking] = useState(false);
 
-  useEffect(() => {
-    localStorage.setItem(
-      'velocity-demo-tasks',
-      JSON.stringify(tasks)
-    );
-  }, [tasks]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  // ------------------------------------
+  // HELPER: READ API RESPONSE
+  // ------------------------------------
+
+  async function readResponse(response) {
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Request failed.');
+    }
+
+    return data;
+  }
+
+  // ------------------------------------
+  // LOAD TASKS FROM POSTGRESQL
+  // ------------------------------------
+
+  async function loadTasks() {
+    setLoading(true);
+    setError('');
+
+    try {
+      const response = await fetch('/api/tasks', {
+        cache: 'no-store'
+      });
+
+      const data = await readResponse(response);
+
+      setTasks(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // ------------------------------------
+  // CHECK NODE.JS SERVER
+  // ------------------------------------
 
   async function checkServer() {
     setChecking(true);
 
     try {
       const response = await fetch('/api/status', {
-        cache: 'no-store',
+        cache: 'no-store'
       });
 
-      if (!response.ok) {
-        throw new Error('Server unavailable');
-      }
+      const data = await readResponse(response);
 
-      const data = await response.json();
       setServer(data);
     } catch {
       setServer(null);
@@ -53,70 +71,157 @@ function App() {
     }
   }
 
+  // Load data when the app opens.
   useEffect(() => {
+    loadTasks();
     checkServer();
   }, []);
 
-  function addTask(event) {
+  // ------------------------------------
+  // ADD TASK
+  // ------------------------------------
+
+  async function addTask(event) {
     event.preventDefault();
 
-    if (!newTask.trim()) return;
+    if (!newTask.trim() || busy || loading) return;
 
-    setTasks((current) => [
-      {
-        id: Date.now(),
-        text: newTask.trim(),
-        done: false,
-      },
-      ...current,
-    ]);
+    setBusy(true);
+    setError('');
 
-    setNewTask('');
+    try {
+      const response = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          text: newTask.trim()
+        })
+      });
+
+      const task = await readResponse(response);
+
+      setTasks((current) => [task, ...current]);
+      setNewTask('');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
   }
 
-  function toggleTask(id) {
-    setTasks((current) =>
-      current.map((task) =>
-        task.id === id
-          ? { ...task, done: !task.done }
-          : task
-      )
-    );
+  // ------------------------------------
+  // MARK TASK COMPLETE / INCOMPLETE
+  // ------------------------------------
+
+  async function toggleTask(task) {
+    if (busy || loading) return;
+
+    setBusy(true);
+    setError('');
+
+    try {
+      const response = await fetch(`/api/tasks/${task.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          done: !task.done
+        })
+      });
+
+      const updatedTask = await readResponse(response);
+
+      setTasks((current) =>
+        current.map((item) =>
+          item.id === updatedTask.id
+            ? updatedTask
+            : item
+        )
+      );
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
   }
 
-  function deleteTask(id) {
-    setTasks((current) =>
-      current.filter((task) => task.id !== id)
-    );
+  // ------------------------------------
+  // DELETE TASK
+  // ------------------------------------
+
+  async function deleteTask(id) {
+    if (busy || loading) return;
+
+    setBusy(true);
+    setError('');
+
+    try {
+      const response = await fetch(`/api/tasks/${id}`, {
+        method: 'DELETE'
+      });
+
+      if (!response.ok) {
+        await readResponse(response);
+      }
+
+      setTasks((current) =>
+        current.filter((task) => task.id !== id)
+      );
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
   }
+
+  // ------------------------------------
+  // DASHBOARD STATISTICS
+  // ------------------------------------
 
   const completed = tasks.filter((task) => task.done).length;
+
   const progress = tasks.length
     ? Math.round((completed / tasks.length) * 100)
     : 0;
 
+  // ------------------------------------
+  // APPLICATION UI
+  // ------------------------------------
+
   return (
     <div className="app">
+
       <header className="navbar">
         <div className="brand">
           <span className="brand-icon">V</span>
-          <span>VELOCITY <span className="muted">/ LAUNCHPAD</span></span>
+          <span>
+            VELOCITY <span className="muted">/ LAUNCHPAD</span>
+          </span>
         </div>
 
-        <span className="nav-badge">DEMO APPLICATION</span>
+        <span className="nav-badge">
+          DEMO APPLICATION
+        </span>
       </header>
 
       <main className="container">
+
         <section className="hero">
+
           <div className="eyebrow">
             <span className="pulse" />
-            BUILT WITH REACT - POWERED BY NODE.JS.
+            BUILT WITH REACT. POWERED BY NODE.JS.
           </div>
 
           <h1>
             From code to production.
             <br />
-            <span className="gradient-text">Without the complexity.</span>
+            <span className="gradient-text">
+              Without the complexity.
+            </span>
           </h1>
 
           <p>
@@ -126,6 +231,7 @@ function App() {
           </p>
 
           <div className="hero-actions">
+
             <a
               className="button primary"
               href="https://www.cloudways.com/en/velocity.php"
@@ -143,13 +249,18 @@ function App() {
             >
               View Source Code ↗
             </a>
+
           </div>
         </section>
 
         <section className="section">
+
           <div className="section-heading">
             <div>
-              <span className="eyebrow">01 / LIVE INFRASTRUCTURE</span>
+              <span className="eyebrow">
+                01 / LIVE INFRASTRUCTURE
+              </span>
+
               <h2>Application health</h2>
             </div>
 
@@ -160,57 +271,84 @@ function App() {
             >
               {checking ? 'Checking...' : '↻ Refresh status'}
             </button>
+
           </div>
 
           <div className="stats">
+
             <div className="stat-card">
-              <span className="stat-label">SERVER STATUS</span>
+              <span className="stat-label">
+                SERVER STATUS
+              </span>
+
               <div className="stat-value">
                 <span className={server ? 'green' : 'orange'}>
                   ●
                 </span>
-                {server ? 'Online' : checking ? 'Checking' : 'Offline'}
+
+                {server
+                  ? 'Online'
+                  : checking
+                    ? 'Checking'
+                    : 'Offline'}
               </div>
+
               <span className="stat-description">
                 Live response from the backend
               </span>
             </div>
 
             <div className="stat-card">
-              <span className="stat-label">RUNTIME</span>
+              <span className="stat-label">
+                RUNTIME
+              </span>
+
               <div className="stat-value">
                 {server ? server.runtime : '—'}
               </div>
+
               <span className="stat-description">
                 Persistent Node.js process
               </span>
             </div>
 
             <div className="stat-card">
-              <span className="stat-label">SERVER UPTIME</span>
+              <span className="stat-label">
+                SERVER UPTIME
+              </span>
+
               <div className="stat-value">
                 {server ? `${server.uptime}s` : '—'}
               </div>
+
               <span className="stat-description">
                 Since the process started
               </span>
             </div>
+
           </div>
         </section>
 
         <section className="section">
+
           <div className="section-heading">
+
             <div>
-              <span className="eyebrow">02 / INTERACTIVE DEMO</span>
+              <span className="eyebrow">
+                02 / POSTGRESQL DATABASE
+              </span>
+
               <h2>Your deployment checklist</h2>
             </div>
 
             <span className="task-count">
               {completed} / {tasks.length} completed
             </span>
+
           </div>
 
           <div className="task-panel">
+
             <div className="progress-header">
               <span>Overall progress</span>
               <strong>{progress}%</strong>
@@ -220,55 +358,121 @@ function App() {
               <div style={{ width: `${progress}%` }} />
             </div>
 
+            <p
+              style={{
+                color: '#4adea3',
+                fontSize: '12px',
+                marginTop: '20px'
+              }}
+            >
+              ● Tasks stored in PostgreSQL
+            </p>
+
+            {error && (
+              <div
+                role="alert"
+                style={{
+                  color: '#ff8a8a',
+                  marginTop: '16px'
+                }}
+              >
+                {error}
+
+                <button
+                  className="refresh"
+                  style={{ marginLeft: '12px' }}
+                  onClick={loadTasks}
+                  disabled={loading || busy}
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+
             <form onSubmit={addTask} className="task-form">
+
               <input
                 value={newTask}
-                onChange={(event) => setNewTask(event.target.value)}
+                onChange={(event) =>
+                  setNewTask(event.target.value)
+                }
                 placeholder="Add a new task..."
                 aria-label="New task"
+                maxLength={200}
+                disabled={busy || loading}
               />
 
-              <button type="submit">+ Add task</button>
+              <button
+                type="submit"
+                disabled={busy || loading}
+              >
+                {busy ? 'Saving...' : '+ Add task'}
+              </button>
+
             </form>
 
             <div className="task-list">
-              {tasks.map((task) => (
+
+              {loading && (
+                <p className="empty">
+                  Loading tasks from PostgreSQL...
+                </p>
+              )}
+
+              {!loading && tasks.map((task) => (
+
                 <div className="task" key={task.id}>
+
                   <label>
+
                     <input
                       type="checkbox"
                       checked={task.done}
-                      onChange={() => toggleTask(task.id)}
+                      disabled={busy}
+                      onChange={() => toggleTask(task)}
                     />
 
                     <span className={task.done ? 'done' : ''}>
                       {task.text}
                     </span>
+
                   </label>
 
                   <button
                     className="delete"
+                    disabled={busy}
                     onClick={() => deleteTask(task.id)}
                     aria-label={`Delete ${task.text}`}
                   >
                     ×
                   </button>
+
                 </div>
+
               ))}
 
-              {tasks.length === 0 && (
+              {!loading && !error && tasks.length === 0 && (
                 <p className="empty">
-                  No tasks yet. Add one above!
+                  No tasks yet. Add your first task!
                 </p>
               )}
+
             </div>
+
           </div>
+
         </section>
 
         <footer>
-          <span>Cloudways Velocity / Demo Application</span>
-          <span>React + Vite + Express</span>
+          <span>
+            Cloudways Velocity / Demo Application
+          </span>
+
+          <span>
+            React + Express + PostgreSQL
+          </span>
         </footer>
+
       </main>
     </div>
   );
