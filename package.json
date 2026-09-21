@@ -5,11 +5,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-  "dev": "vite",
-  "build": "vite build",
-  "postinstall": "npm run build",
-  "start": "node server.js"
-}
+    "dev": "vite",
+    "build": "vite build",
+    "postinstall": "npm run build",
+    "start": "node server.js"
+  },
   "dependencies": {
     "express": "^5.1.0",
     "react": "^19.1.1",
