@@ -110,7 +110,7 @@ function App() {
         <section className="hero">
           <div className="eyebrow">
             <span className="pulse" />
-            BUILT WITH REACT. POWERED BY NODE.JS.
+            BUILT WITH REACT - POWERED BY NODE.JS.
           </div>
 
           <h1>
